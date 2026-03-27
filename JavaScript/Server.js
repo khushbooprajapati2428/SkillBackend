@@ -75,6 +75,49 @@ app.get('/api/students', async (req, res) => {
     }
 });
 
+
+
+// server.js mein routes ke beech mein ye add karein
+app.post('/api/finalize-team', async (req, res) => {
+    try {
+        const { projectName, guideName, selectedMembers } = req.body;
+
+        // 1. Students ko "isAvailable: false" mark karna aur Notification add karna
+        const memberIds = selectedMembers.map(m => m._id || m.id);
+        
+        await Student.updateMany(
+            { _id: { $in: memberIds } },
+            { 
+                $set: { isAvailable: false, currentProject: projectName },
+                $push: { 
+                    notifications: { 
+                        message: `Congratulations! You are selected for ${projectName}`,
+                        projectName: projectName,
+                        guideName: guideName
+                    }
+                }
+            }
+        );
+
+        // 2. Team collection mein entry save karna (History ke liye)
+        const Team = require('./Models/Team'); // Team model import
+        const newTeam = new Team({
+            projectName,
+            guideName,
+            members: selectedMembers.map(m => ({ studentId: m._id || m.id, name: m.name, email: m.email }))
+        });
+        await newTeam.save();
+
+        res.status(200).json({ message: "Team Finalized and Students Notified!" });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+
+
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`🚀 Server is running on port ${PORT}`);
