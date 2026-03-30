@@ -2,11 +2,11 @@
 //node JavaScript/Server.js   server start karne ki command.
 
 
-const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const app = express();
 
@@ -14,13 +14,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// 🛠️ Model Imports (Sahi Path ke saath)
+const Student = require('../Models/Student'); 
+const Team = require('../Models/Team'); 
+
 // Database Connection
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB Connected!"))
   .catch(err => console.log("❌ DB Error:", err));
 
-// Model Import
-const Student = require('../Models/Student'); 
 
 // 1. Home Route (Sirf ek baar)
 app.get('/', (req, res) => {
@@ -42,24 +44,46 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// 3. Login API (Clean version)
-app.post('/api/login', async (req, res) => {
+
+
+// 3. Login API (Ise update karein)
+// Server.js - API Finalize Team aur Login Update
+app.post('/api/finalize-team', async (req, res) => { 
     try {
-        const { email, password } = req.body;
-        const user = await Student.findOne({ email });
+        const { projectName, guideName, selectedMembers } = req.body;
 
-        if (!user) {
-            return res.status(404).json({ message: "User not found!" });
-        }
+        // Sirf unhi students ki IDs nikalna jo selected hain
+        const memberIds = selectedMembers.map(m => m._id);
+        
+        // 1. Students ko update karein
+        await Student.updateMany(
+            { _id: { $in: memberIds } },
+            { 
+                $set: { isAvailable: false, currentProject: projectName },
+                $push: { 
+                    notifications: { 
+                        message: `Congratulations! You are selected for ${projectName}`,
+                        projectName: projectName,
+                        guideName: guideName,
+                        date: new Date()
+                    }
+                }
+            }
+        );
 
-        if (user.password !== password) {
-            return res.status(401).json({ message: "Incorrect password!" });
-        }
-
-        res.status(200).json({ 
-            message: "Login Successful!", 
-            user: { name: user.name, email: user.email } 
+        // 2. Team History save karein
+        const newTeam = new Team({
+            projectName,
+            guideName,
+            members: selectedMembers.map(m => ({ 
+                studentId: m._id, 
+                name: m.name, 
+                email: m.email 
+            }))
         });
+
+        await newTeam.save();
+        res.status(200).json({ message: "Team Finalized and Students Notified!" });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -77,12 +101,13 @@ app.get('/api/students', async (req, res) => {
 
 
 
-// server.js mein routes ke beech mein ye add karein
-app.post('/api/finalize-team', async (req, res) => {
+// Server.js mein check karein
+// 🚀 'async' keyword yahan hona bahut zaroori hai
+app.post('/api/finalize-team', async (req, res) => { 
     try {
         const { projectName, guideName, selectedMembers } = req.body;
 
-        // 1. Students ko "isAvailable: false" mark karna aur Notification add karna
+        // 1. Students update logic...
         const memberIds = selectedMembers.map(m => m._id || m.id);
         
         await Student.updateMany(
@@ -93,24 +118,40 @@ app.post('/api/finalize-team', async (req, res) => {
                     notifications: { 
                         message: `Congratulations! You are selected for ${projectName}`,
                         projectName: projectName,
-                        guideName: guideName
+                        guideName: guideName,
+                        date: new Date()
                     }
                 }
             }
         );
 
-        // 2. Team collection mein entry save karna (History ke liye)
-        const Team = require('./Models/Team'); // Team model import
+        // 2. Team save logic
         const newTeam = new Team({
             projectName,
             guideName,
-            members: selectedMembers.map(m => ({ studentId: m._id || m.id, name: m.name, email: m.email }))
+            members: selectedMembers.map(m => ({ 
+                studentId: m._id || m.id, 
+                name: m.name, 
+                email: m.email 
+            }))
         });
-        await newTeam.save();
+
+        await newTeam.save(); // 👈 Ab ye 'await' kaam karega!
 
         res.status(200).json({ message: "Team Finalized and Students Notified!" });
     } catch (err) {
         res.status(500).json({ error: err.message });
+    }
+});
+
+
+// 5. Guide Teams History API
+app.get('/api/guide-teams', async (req, res) => {
+    try {
+        const teams = await Team.find().sort({ createdAt: -1 }); // Nayi teams upar dikhengi
+        res.status(200).json(teams);
+    } catch (err) {
+        res.status(500).json(err);
     }
 });
 
@@ -121,4 +162,4 @@ app.post('/api/finalize-team', async (req, res) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`🚀 Server is running on port ${PORT}`);
-});
+}); 
