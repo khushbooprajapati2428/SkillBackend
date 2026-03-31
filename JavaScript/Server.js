@@ -2,6 +2,7 @@
 //node JavaScript/Server.js   server start karne ki command.
 
 
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -10,26 +11,37 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const app = express();
 
-// Middlewares
-app.use(cors());
+// 1. Middlewares (CORS Fix ke saath)
+// app.use(cors({
+//     origin: "http://localhost:1234", 
+//     methods: ["GET", "POST", "PUT", "DELETE"],
+//     credentials: true
+// }));
+// Server.js mein isse replace karein
+app.use(cors({
+    origin: "*", // 👈 Ye sabhi request allow karega (Testing ke liye best hai)
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true
+}));
 app.use(express.json());
 
-// 🛠️ Model Imports (Sahi Path ke saath)
+// 2. Model Imports
 const Student = require('../Models/Student'); 
 const Team = require('../Models/Team'); 
 
-// Database Connection
+// 3. Database Connection
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB Connected!"))
   .catch(err => console.log("❌ DB Error:", err));
 
+// --- API ROUTES ---
 
-// 1. Home Route (Sirf ek baar)
+// Home Route
 app.get('/', (req, res) => {
     res.send('Skill Sentry API is running...');
 });
 
-// 2. Registration API (Email check ke saath)
+// Registration API
 app.post('/api/register', async (req, res) => {
     try {
         const existingUser = await Student.findOne({ email: req.body.email });
@@ -46,77 +58,69 @@ app.post('/api/register', async (req, res) => {
 
 
 
-// 3. Login API (Ise update karein)
-// Server.js - API Finalize Team aur Login Update
-app.post('/api/finalize-team', async (req, res) => { 
-    try {
-        const { projectName, guideName, selectedMembers } = req.body;
 
-        // Sirf unhi students ki IDs nikalna jo selected hain
-        const memberIds = selectedMembers.map(m => m._id);
+// Ise Server.js mein daalein (Purane login route ko hata kar)
+app.post('/api/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        console.log("Login attempt for:", email); // Terminal mein dikhega
+
+        const user = await Student.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found!" });
+        }
+
+        if (user.password !== password) {
+            return res.status(401).json({ message: "Incorrect password!" });
+        }
+
+        res.status(200).json({ message: "Login Successful!", user });
+    } catch (err) {
+        console.error("Login Server Error:", err);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+
+// Finalize Team API (Only 1 time, Clean logic)
+// app.post('/api/finalize-team', async (req, res) => { 
+//     try {
+//         const { projectName, guideName, selectedMembers } = req.body;
+
+//         const memberIds = selectedMembers.map(m => m._id || m.id);
         
-        // 1. Students ko update karein
-        await Student.updateMany(
-            { _id: { $in: memberIds } },
-            { 
-                $set: { isAvailable: false, currentProject: projectName },
-                $push: { 
-                    notifications: { 
-                        message: `Congratulations! You are selected for ${projectName}`,
-                        projectName: projectName,
-                        guideName: guideName,
-                        date: new Date()
-                    }
-                }
-            }
-        );
+//         // Update Students: notification push aur availability change
+//         await Student.updateMany(
+//             { _id: { $in: memberIds } },
+//             { 
+//                 $set: { isAvailable: false, currentProject: projectName },
+//                 $push: { 
+//                     notifications: { 
+//                         message: `Congratulations! You are selected for ${projectName}`,
+//                         projectName: projectName,
+//                         guideName: guideName,
+//                         date: new Date()
+//                     }
+//                 }
+//             }
+//         );
 
-        // 2. Team History save karein
-        const newTeam = new Team({
-            projectName,
-            guideName,
-            members: selectedMembers.map(m => ({ 
-                studentId: m._id, 
-                name: m.name, 
-                email: m.email 
-            }))
-        });
-
-        await newTeam.save();
-        res.status(200).json({ message: "Team Finalized and Students Notified!" });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// 4. Students Data API (Jo dashboard load karega)
-app.get('/api/students', async (req, res) => {
-    try {
-        const students = await Student.find(); 
-        res.status(200).json(students);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-
-
-// Server.js mein check karein
-// 🚀 'async' keyword yahan hona bahut zaroori hai
+// Server.js mein finalize-team ka logic
 app.post('/api/finalize-team', async (req, res) => { 
     try {
         const { projectName, guideName, selectedMembers } = req.body;
 
-        // 1. Students update logic...
+        // 1. Saare selected students ki IDs nikalna
         const memberIds = selectedMembers.map(m => m._id || m.id);
         
+        // 2. Ek saath sabko Update karna (Notification + Availability)
         await Student.updateMany(
-            { _id: { $in: memberIds } },
+            { _id: { $in: memberIds } }, // 👈 Ye "In" operator sabhi 5-6 students ko dhund lega
             { 
                 $set: { isAvailable: false, currentProject: projectName },
                 $push: { 
                     notifications: { 
-                        message: `Congratulations! You are selected for ${projectName}`,
+                        message: `Congratulations! You are selected for ${projectName} by ${guideName}`,
                         projectName: projectName,
                         guideName: guideName,
                         date: new Date()
@@ -125,7 +129,7 @@ app.post('/api/finalize-team', async (req, res) => {
             }
         );
 
-        // 2. Team save logic
+        // 3. Team history mein bhi save karna
         const newTeam = new Team({
             projectName,
             guideName,
@@ -136,30 +140,37 @@ app.post('/api/finalize-team', async (req, res) => {
             }))
         });
 
-        await newTeam.save(); // 👈 Ab ye 'await' kaam karega!
+        await newTeam.save();
+        res.status(200).json({ message: "Team Finalized and All Students Notified!" });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+        
+   
 
-        res.status(200).json({ message: "Team Finalized and Students Notified!" });
+// Get All Students
+app.get('/api/students', async (req, res) => {
+    try {
+        const students = await Student.find(); 
+        res.status(200).json(students);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-
-// 5. Guide Teams History API
+// Get Guide Teams History
 app.get('/api/guide-teams', async (req, res) => {
     try {
-        const teams = await Team.find().sort({ createdAt: -1 }); // Nayi teams upar dikhengi
+        const teams = await Team.find().sort({ createdAt: -1 });
         res.status(200).json(teams);
     } catch (err) {
-        res.status(500).json(err);
+        res.status(500).json({ error: err.message });
     }
 });
 
-
-
-
-
+// Server Listen
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`🚀 Server is running on port ${PORT}`);
-}); 
+});
