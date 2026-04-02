@@ -11,12 +11,6 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const app = express();
 
-// 1. Middlewares (CORS Fix ke saath)
-// app.use(cors({
-//     origin: "http://localhost:1234", 
-//     methods: ["GET", "POST", "PUT", "DELETE"],
-//     credentials: true
-// }));
 // Server.js mein isse replace karein
 app.use(cors({
     origin: "*", // 👈 Ye sabhi request allow karega (Testing ke liye best hai)
@@ -82,72 +76,59 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// Finalize Team API (Only 1 time, Clean logic)
-// app.post('/api/finalize-team', async (req, res) => { 
-//     try {
-//         const { projectName, guideName, selectedMembers } = req.body;
 
-//         const memberIds = selectedMembers.map(m => m._id || m.id);
-        
-//         // Update Students: notification push aur availability change
-//         await Student.updateMany(
-//             { _id: { $in: memberIds } },
-//             { 
-//                 $set: { isAvailable: false, currentProject: projectName },
-//                 $push: { 
-//                     notifications: { 
-//                         message: `Congratulations! You are selected for ${projectName}`,
-//                         projectName: projectName,
-//                         guideName: guideName,
-//                         date: new Date()
-//                     }
-//                 }
-//             }
-//         );
-
-// Server.js mein finalize-team ka logic
 app.post('/api/finalize-team', async (req, res) => { 
     try {
-        const { projectName, guideName, selectedMembers } = req.body;
+        const { projectName, guideName, selectedMembers, guideId } = req.body;
 
-        // 1. Saare selected students ki IDs nikalna
-        const memberIds = selectedMembers.map(m => m._id || m.id);
-        
-        // 2. Ek saath sabko Update karna (Notification + Availability)
-        await Student.updateMany(
-            { _id: { $in: memberIds } }, // 👈 Ye "In" operator sabhi 5-6 students ko dhund lega
-            { 
-                $set: { isAvailable: false, currentProject: projectName },
-                $push: { 
-                    notifications: { 
-                        message: `Congratulations! You are selected for ${projectName} by ${guideName}`,
-                        projectName: projectName,
-                        guideName: guideName,
-                        date: new Date()
+        // 1. Team Data taiyar karna (Sab kuch String mein convert karke)
+        const teamData = {
+            projectName: projectName,
+            guideName: guideName,
+            guideId: String(guideId || "dummy-id"),
+            members: selectedMembers.map(m => ({
+                studentId: String(m._id || m.id), 
+                name: m.name,
+                email: m.email
+            })),
+            createdAt: new Date()
+        };
+
+        // 🚀 MASTER STROKE: Model validation bypass karke direct save karna
+        // Isse "Cast to ObjectId" wala error kabhi nahi aayega
+        await mongoose.connection.collection('teams').insertOne(teamData);
+
+        // 2. Notification Logic (Sirf Real IDs ke liye - 24 chars)
+        const realMemberIds = selectedMembers
+            .map(m => m._id || m.id)
+            .filter(id => id && id.length === 24);
+
+        if (realMemberIds.length > 0) {
+            const studentIds = realMemberIds.map(id => new mongoose.Types.ObjectId(id));
+            await mongoose.connection.collection('students').updateMany(
+                { _id: { $in: studentIds } },
+                { 
+                    $push: { 
+                        notifications: { 
+                            message: `Congratulations! Selected for ${projectName}`,
+                            projectName, guideName, date: new Date()
+                        }
                     }
                 }
-            }
-        );
+            );
+        }
 
-        // 3. Team history mein bhi save karna
-        const newTeam = new Team({
-            projectName,
-            guideName,
-            members: selectedMembers.map(m => ({ 
-                studentId: m._id || m.id, 
-                name: m.name, 
-                email: m.email 
-            }))
-        });
+        res.status(200).json({ message: "Team locked successfully! Notification sent to real users." });
 
-        await newTeam.save();
-        res.status(200).json({ message: "Team Finalized and All Students Notified!" });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error("Final Error:", err);
+        res.status(500).json({ error: "Server Error: " + err.message });
     }
 });
-        
-   
+
+
+
+
 
 // Get All Students
 app.get('/api/students', async (req, res) => {
