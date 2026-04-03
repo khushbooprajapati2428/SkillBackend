@@ -130,7 +130,7 @@ app.post('/api/finalize-team', async (req, res) => {
 
 
 
-// Get All Students
+//Get All Students
 app.get('/api/students', async (req, res) => {
     try {
         const students = await Student.find(); 
@@ -141,14 +141,47 @@ app.get('/api/students', async (req, res) => {
 });
 
 // Get Guide Teams History
-app.get('/api/guide-teams', async (req, res) => {
+// app.get('/api/guide-teams', async (req, res) => {
+//     try {
+//         const teams = await Team.find().sort({ createdAt: -1 });
+//         res.status(200).json(teams);
+//     } catch (err) {
+//         res.status(500).json({ error: err.message });
+//     }
+// });
+
+
+// --- HISTORY ROUTES ---
+
+// 1. Sabhi teams dekhne ke liye (Backup ke liye)
+app.get('/api/guide-teams/all', async (req, res) => {
     try {
-        const teams = await Team.find().sort({ createdAt: -1 });
+        const teams = await mongoose.connection.collection('teams').find().sort({ createdAt: -1 }).toArray();
         res.status(200).json(teams);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
+
+// 2. Sirf login kiye huye Guide ki teams dekhne ke liye (MOST IMPORTANT 🚀)
+app.get('/api/guide-teams/:guideId', async (req, res) => {
+    try {
+        // Hum MongoDB collection ko direct query kar rahe hain
+        const teams = await mongoose.connection.collection('teams')
+            .find({ guideId: String(req.params.guideId) }) // String() use kiya taaki match pakka ho
+            .sort({ createdAt: -1 }) 
+            .toArray();
+        
+        console.log(`🔍 Guide ID: ${req.params.guideId} | Found: ${teams.length} teams`);
+        res.json(teams);
+    } catch (err) {
+        res.status(500).json({ error: "Fetch error: " + err.message });
+    }
+});
+
+
+
+
 
 // Server Listen
 const PORT = process.env.PORT || 5000;

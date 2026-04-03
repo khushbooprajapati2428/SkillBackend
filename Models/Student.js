@@ -1,28 +1,6 @@
 
 
 
-// const mongoose = require('mongoose');
-
-// const StudentSchema = new mongoose.Schema({
-//   name: { type: String, required: true },
-//   email: { type: String, required: true, unique: true }, 
-//   password: { type: String, required: true }, 
-  
-//   // Dono role fields ko mila kar sirf ye ek rakhein
-//   role: { 
-//     type: String, 
-//     enum: ['fresher', 'experienced', 'student', 'guide'], 
-//     default: 'fresher' 
-//   },
-
-//   skills: [String],
-//   projects: String
-// });
-
-// module.exports = mongoose.model('Student', StudentSchema);
-
-
-
 
 
 
@@ -38,9 +16,12 @@ const StudentSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  role: { type: String, enum: ['fresher', 'experienced'], default: 'fresher' },
-  skills: [String],
-  projects: String,
+ role: {
+    type: String,
+    // Sare naye roles yahan add kar dijiye
+    enum: ['fresher', 'student_exp', 'guide', 'guide_exp', 'experienced'], 
+    default: 'fresher'
+},
   
   // --- Naye Fields Jo Guide ne bole hain ---
   isAvailable: { type: Boolean, default: true }, 
